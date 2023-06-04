@@ -11,6 +11,7 @@ sys.path.append(basedir)
 
 from lesson_3.global_vars import *
 from lesson_5.client_log_config import client_logger
+from global_vars import *
 
 
 def presence_msg(username=None, password=None, status='online'):
@@ -24,6 +25,7 @@ def presence_msg(username=None, password=None, status='online'):
         }
     }
     client_logger.debug('Сформировано "presence" сообщение для сервера')
+
     return json.dumps(msg).encode(ENCODING)
 
 
@@ -34,6 +36,7 @@ def preparing_message(msg: str, action: str = 'msg', ):
         'time': time.time(),
         'message': msg,
     }
+
     client_logger.debug(f'Подготовлено сообщение {data}')
     return json.dumps(data).encode(ENCODING)
 
@@ -76,6 +79,26 @@ def start(address, port):
 
         resp = parse_response(get_response(s))
         client_logger.debug(f'Получен ответ {resp}')
+    s.send(msg)
+
+
+def get_response(s: socket, max_length=BUFFERSIZE):
+    return s.recv(max_length).decode(ENCODING)
+
+
+def parse_response(msg: str):
+    return json.loads(msg)
+
+
+def start(address, port):
+
+    while True:
+        s = socket(AF_INET, SOCK_STREAM)
+        s.connect((address, port))
+        presence_msg()
+        msg = input('>>> ')
+        send_message(s, preparing_message(msg))
+        resp = parse_response(get_response(s))
         print('<<<', resp['response'])
         s.close()
 

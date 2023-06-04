@@ -11,6 +11,7 @@ sys.path.append(basedir)
 
 from lesson_3.global_vars import *
 from lesson_5.server_log_config import server_logger, stream_logger
+from global_vars import *
 
 
 def get_message(client):
@@ -20,6 +21,7 @@ def get_message(client):
     :return: строку сообщения
     """
     msg = client.recv(BUFFERSIZE).decode(ENCODING)
+
     server_logger.debug(f'Сообщение от клиента {msg}')
     return json.loads(msg)
 
@@ -31,6 +33,7 @@ def preparing_response(response_code: int, action: str = 'presence'):
         'time': time.time(),
         'response': response_code,
     }
+
     server_logger.debug(f'Подготовка ответа {data}')
     return json.dumps(data).encode(ENCODING)
 
@@ -41,6 +44,7 @@ def send_message(client, message: bytes):
         server_logger.debug('Сообщение отправлено')
     except Exception as ex:
         server_logger.error(f'Ошибка при отправке сообщения: {ex}')
+    client.send(message)
 
 
 def get_socket(address: str, port: int, listen: int = 5):
@@ -69,6 +73,12 @@ def start(address: str, port: int):
         send_message(client, msg)
         client.close()
         server_logger.info(f'Закрыто соединение с клиентом: {client}')
+        client, addr = s.accept()
+        cm = get_message(client)
+        print(cm['message'])
+        msg = preparing_response(OK)
+        send_message(client, msg)
+        client.close()
 
 
 if __name__ == '__main__':
