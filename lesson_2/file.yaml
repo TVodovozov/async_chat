@@ -1,0 +1,9 @@
+first_key:
+- first_value
+- second_value
+- 123
+- 255
+second_key: 55
+third_key:
+  billing: 100$
+  currency: 100€
