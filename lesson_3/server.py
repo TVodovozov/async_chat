@@ -1,81 +1,72 @@
-from socket import *
-import time
-import json
+import select
+from socket import socket, AF_INET, SOCK_STREAM
 import argparse
 import ipaddress
 
 from global_vars import *
-from lesson_5.server_log_config import server_logger, stream_logger, log
+from lesson_5.server_log_config import stream_logger, log
 
 
-@log
-def get_message(client):
+def read_requests(r_clients: list, all_clients: list):
     """
-    Получает сообщение от клиента
-    :param client:
-    :return: строку сообщения
+    Читает запросы из списка клиентов.
+    Возвращает словарь вида {сокет: запрос}
     """
-    try:
-        msg = client.recv(BUFFERSIZE).decode(ENCODING)
-    except UnicodeDecodeError:
-        server_logger.error(f'Ошибка декодирования сообщения {msg}')
-        msg = {
-            'action': 'msg',
-            'response': BAD_REQUEST,
-            'error': 'UnicodeDecodeError'
-        }
-    return json.loads(msg)
+
+    responses = {}
+    for sock in r_clients:
+        try:
+            data = sock.recv(BUFFERSIZE).decode(ENCODING)
+            responses[sock] = data
+        except:
+            stream_logger.info(f'Клиент {sock} отключился')
+            all_clients.remove(sock)
+
+    return responses
 
 
-@log
-def preparing_response(response_code: int, action: str = 'presence'):
-    """Готовит ответ клиенту"""
-    data = {
-        'action': action,
-        'time': time.time(),
-        'response': response_code,
-    }
-    server_logger.debug(f'Подготовка ответа {data}')
-    return json.dumps(data).encode(ENCODING)
+def write_responses(requests, w_clients, all_clients):
+    for sock in w_clients:
+        try:
+            # Отправляем на каждый доступный сокет все сообщения из requests
+            for resp in requests.values():
+                sock.send(resp.encode(ENCODING))
+        except:
+            stream_logger.info(f'Клиент {sock.fileno()} {sock.getpeername()} отключился')
+            sock.close()
+            all_clients.remove(sock)
 
-
-@log
-def send_message(client, message: bytes):
-    try:
-        client.send(message)
-        server_logger.debug('Сообщение отправлено')
-    except Exception as ex:
-        server_logger.error(f'Ошибка при отправке сообщения: {ex}')
-
-
-@log
-def get_socket(address: str, port: int, listen: int = 5):
-    s = socket(AF_INET, SOCK_STREAM)
-    s.bind((address, port))
-    s.listen(listen)
-    server_logger.debug(f'Запущен сервер с параметрами: ip = {address}, port = {port}, listen = {listen}')
-    return s
 
 
 @log
 def start(address: str, port: int):
-    s = get_socket(address, port)
+    clients = []
+
+    s = socket(AF_INET, SOCK_STREAM)
+    s.bind((address, port))
+    s.listen(5)
+    s.settimeout(0.2)
 
     while True:
-        server_logger.debug('Ожидание подключения клиента')
-        client, addr = s.accept()
-        server_logger.debug(f'Подключен клиент: {client}, с адресом {addr}')
-        cm = get_message(client)  # Получение presence сообщения
-        server_logger.debug(f'Получено сообщение от клиента: {cm}')
+        try:
+            clt, addr = s.accept()
+        except OSError:
+            pass
+        else:
+            stream_logger.info(f'Получен запрос на соединение от {addr}')
+            clients.append(clt)
+        finally:
+            wait = 0
+            rlist = []
+            wlist = []
+            try:
+                rlist, wlist, erlist = select.select(clients, clients, [], wait)
+            except:
+                pass
 
-        cm = get_message(client)  # Получение сообщения
-        if cm.get('message'):
-            stream_logger.info(cm.get('message'))
-
-        msg = preparing_response(OK)
-        send_message(client, msg)
-        client.close()
-        server_logger.info(f'Закрыто соединение с клиентом: {client}')
+            requests = read_requests(rlist, clients)
+            if requests:
+                write_responses(requests, wlist, clients)
 
 
 if __name__ == '__main__':
