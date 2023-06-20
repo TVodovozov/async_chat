@@ -1,9 +1,16 @@
+import sys
 from socket import *
-import time
-import json
 import argparse
 import ipaddress
 
+from global_vars import *
+from lesson_5.client_log_config import client_logger, log
+
+
+def send_message(sock: socket, message: str):
+    if message == 'exit':
+        sock.close()
+        sys.exit(0)
 import os
 import sys
 basedir = os.path.dirname(os.path.dirname(__file__))
@@ -40,34 +47,46 @@ def preparing_message(msg: str, action: str = 'msg', ):
     client_logger.debug(f'Подготовлено сообщение {data}')
     return json.dumps(data).encode(ENCODING)
 
-
-def send_message(s: socket, msg: bytes):
+    prepare_message = None
     try:
-        s.send(msg)
-        client_logger.debug('Сообщение отправлено')
-    except Exception as ex:
-        client_logger.error(f'Ошибка при отправке сообщения {ex}')
+        prepare_message = message.encode(ENCODING)
+    except UnicodeEncodeError:
+        client_logger.error(f'Не удалось закодировать сообщение - "{message}"')
+
+    if prepare_message:
+        try:
+            sock.send(prepare_message)
+        except:
+            client_logger.error(f'Не удалось отправить сообщение {message} клиенту {sock.getpeername()}')
 
 
-def get_response(s: socket, max_length=BUFFERSIZE):
-    msg = s.recv(max_length).decode(ENCODING)
-    client_logger.debug(f'Получено сообщение от сервера {msg}')
-    return msg
-
-
-def parse_response(msg: str):
+def get_message(s: socket):
+    msg_bytes = None
     try:
-        obj = json.loads(msg)
-        client_logger.debug(f'Сформирован объект из сообщения от сервера: {obj}')
-    except Exception as ex:
-        client_logger.error(f'Ошибка при разборке сообщения. {ex}')
-        return
-    return obj
+        msg_bytes = s.recv(BUFFERSIZE)
+    except:
+        client_logger.error(f'Нет связи с сервером! {s.getpeername()}')
+
+    if msg_bytes:
+        try:
+            message = msg_bytes.decode(ENCODING)
+        except UnicodeDecodeError as e:
+            client_logger.error(f'{e}')
+        else:
+            return message
 
 
-def start(address, port):
-    client_logger.debug(f'Запущен клиент с параметрами: ip = {address}, port = {port}')
+@log
+def start(address, port, mode):
+    s = socket(AF_INET, SOCK_STREAM)
+    s.connect((address, port))
     while True:
+        if mode == 'send':
+            send_message(s, input('>>> '))
+        elif mode == 'listen':
+            message = get_message(s)
+            if message:
+                print(message)
         s = socket(AF_INET, SOCK_STREAM)
         s.connect((address, port))
         pm = presence_msg()
@@ -106,6 +125,7 @@ def start(address, port):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('address', type=str, help='IP-адрес сервера')
+    parser.add_argument('mode', type=str, help='Тип клиента (send - отправитель, listen - получатель)')
     parser.add_argument('-p', dest='port', type=int, default=7777, help='TCP-порт на сервере (по умолчанию 7777)')
     args = parser.parse_args()
 
@@ -114,4 +134,4 @@ if __name__ == '__main__':
     except ValueError:
         parser.error('Введен не корректный ip адрес')
 
-    start(args.address, args.port)
+    start(args.address, args.port, args.mode)

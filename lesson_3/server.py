@@ -1,25 +1,29 @@
-from socket import *
-import time
-import json
+import select
+from socket import socket, AF_INET, SOCK_STREAM
 import argparse
 import ipaddress
 
-import os
-import sys
-basedir = os.path.dirname(os.path.dirname(__file__))
-sys.path.append(basedir)
+from global_vars import *
+from lesson_5.server_log_config import stream_logger, log
 
 from lesson_3.global_vars import *
 from lesson_5.server_log_config import server_logger, stream_logger
 from global_vars import *
 
+def read_requests(r_clients: list, all_clients: list):
+    """
+    Читает запросы из списка клиентов.
+    Возвращает словарь вида {сокет: запрос}
+    """
 
-def get_message(client):
-    """
-    Получает сообщение от клиента
-    :param client:
-    :return: строку сообщения
-    """
+    responses = {}
+    for sock in r_clients:
+        try:
+            data = sock.recv(BUFFERSIZE).decode(ENCODING)
+            responses[sock] = data
+        except:
+            stream_logger.info(f'Клиент {sock} отключился')
+            all_clients.remove(sock)
     msg = client.recv(BUFFERSIZE).decode(ENCODING)
 
     server_logger.debug(f'Сообщение от клиента {msg}')
@@ -37,6 +41,8 @@ def preparing_response(response_code: int, action: str = 'presence'):
     server_logger.debug(f'Подготовка ответа {data}')
     return json.dumps(data).encode(ENCODING)
 
+    return responses
+
 
 def send_message(client, message: bytes):
     try:
@@ -46,19 +52,49 @@ def send_message(client, message: bytes):
         server_logger.error(f'Ошибка при отправке сообщения: {ex}')
     client.send(message)
 
+def write_responses(requests, w_clients, all_clients):
+    for sock in w_clients:
+        try:
+            # Отправляем на каждый доступный сокет все сообщения из requests
+            for resp in requests.values():
+                sock.send(resp.encode(ENCODING))
+        except:
+            stream_logger.info(f'Клиент {sock.fileno()} {sock.getpeername()} отключился')
+            sock.close()
+            all_clients.remove(sock)
 
-def get_socket(address: str, port: int, listen: int = 5):
+
+
+@log
+def start(address: str, port: int):
+    clients = []
+
     s = socket(AF_INET, SOCK_STREAM)
     s.bind((address, port))
-    s.listen(listen)
-    server_logger.debug(f'Запущен сервер с параметрами: ip = {address}, port = {port}, listen = {listen}')
-    return s
-
-
-def start(address: str, port: int):
-    s = get_socket(address, port)
+    s.listen(5)
+    s.settimeout(0.2)
 
     while True:
+        try:
+            clt, addr = s.accept()
+        except OSError:
+            pass
+        else:
+            stream_logger.info(f'Получен запрос на соединение от {addr}')
+            clients.append(clt)
+        finally:
+            wait = 0
+            rlist = []
+            wlist = []
+            try:
+                rlist, wlist, erlist = select.select(clients, clients, [], wait)
+            except:
+                pass
+
+            requests = read_requests(rlist, clients)
+            if requests:
+                write_responses(requests, wlist, clients)
+                
         server_logger.debug('Ожидание подключения клиента')
         client, addr = s.accept()
         server_logger.debug(f'Подключен клиент: {client}, с адресом {addr}')
