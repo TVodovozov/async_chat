@@ -1,6 +1,8 @@
 ENCODING = 'utf-8'
 BUFFERSIZE = 1024
 
+LOGGER_STR_FORMAT = '[%(asctime)s] [%(levelname)s] [%(module)s] [%(message)s]'
+LOGGER_DATE_FORMAT = '%d.%m.%Y %H:%M:%S'
 
 # ERRORS CODES
 CONTINUE = 100

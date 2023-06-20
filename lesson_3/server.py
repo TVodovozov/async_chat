@@ -4,6 +4,13 @@ import json
 import argparse
 import ipaddress
 
+import os
+import sys
+basedir = os.path.dirname(os.path.dirname(__file__))
+sys.path.append(basedir)
+
+from lesson_3.global_vars import *
+from lesson_5.server_log_config import server_logger, stream_logger
 from global_vars import *
 
 
@@ -14,6 +21,8 @@ def get_message(client):
     :return: строку сообщения
     """
     msg = client.recv(BUFFERSIZE).decode(ENCODING)
+
+    server_logger.debug(f'Сообщение от клиента {msg}')
     return json.loads(msg)
 
 
@@ -24,10 +33,17 @@ def preparing_response(response_code: int, action: str = 'presence'):
         'time': time.time(),
         'response': response_code,
     }
+
+    server_logger.debug(f'Подготовка ответа {data}')
     return json.dumps(data).encode(ENCODING)
 
 
 def send_message(client, message: bytes):
+    try:
+        client.send(message)
+        server_logger.debug('Сообщение отправлено')
+    except Exception as ex:
+        server_logger.error(f'Ошибка при отправке сообщения: {ex}')
     client.send(message)
 
 
@@ -35,6 +51,7 @@ def get_socket(address: str, port: int, listen: int = 5):
     s = socket(AF_INET, SOCK_STREAM)
     s.bind((address, port))
     s.listen(listen)
+    server_logger.debug(f'Запущен сервер с параметрами: ip = {address}, port = {port}, listen = {listen}')
     return s
 
 
@@ -42,6 +59,20 @@ def start(address: str, port: int):
     s = get_socket(address, port)
 
     while True:
+        server_logger.debug('Ожидание подключения клиента')
+        client, addr = s.accept()
+        server_logger.debug(f'Подключен клиент: {client}, с адресом {addr}')
+        cm = get_message(client)  # Получение presence сообщения
+        server_logger.debug(f'Получено сообщение от клиента: {cm}')
+
+        cm = get_message(client)  # Получение сообщения
+        if cm.get('message'):
+            stream_logger.info(cm.get('message'))
+
+        msg = preparing_response(OK)
+        send_message(client, msg)
+        client.close()
+        server_logger.info(f'Закрыто соединение с клиентом: {client}')
         client, addr = s.accept()
         cm = get_message(client)
         print(cm['message'])
