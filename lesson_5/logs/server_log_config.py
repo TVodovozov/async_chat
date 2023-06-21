@@ -7,7 +7,7 @@ import os
 basedir = os.path.dirname(os.path.dirname(__file__))
 sys.path.append(basedir)
 
-from lesson_3.global_vars import LOGGER_STR_FORMAT, LOGGER_DATE_FORMAT, ENCODING
+from global_vars import LOGGER_STR_FORMAT, LOGGER_DATE_FORMAT, ENCODING
 
 formatter = logging.Formatter(fmt=LOGGER_STR_FORMAT, datefmt=LOGGER_DATE_FORMAT)
 LOG_FILE = os.path.join(basedir, 'logs', 'server.log')
